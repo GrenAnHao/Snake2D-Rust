@@ -47,7 +47,9 @@ snake2d_v2.rs (主入口)
     │   ├── snake.rs      → types, constants
     │   ├── collision.rs  → types, constants
     │   ├── spawn.rs      → types, constants, fruits
+    │   ├── spawn_manager.rs → types, constants, fruits (声明式生成管理)
     │   ├── buff_manager.rs → types, constants
+    │   ├── bomb_manager.rs → types, constants (炸弹逻辑封装)
     │   ├── damage_manager.rs → types, constants
     │   ├── ai_snake.rs   → types, constants (AI蛇)
     │   └── ai_manager.rs → types, constants, fruits (AI蛇管理)
@@ -65,6 +67,7 @@ snake2d_v2.rs (主入口)
     ├── fruits (果实系统)
     │   ├── fruit_trait.rs → constants
     │   ├── fruit_registry.rs → fruit_trait
+    │   ├── fruit_context.rs → types (扩展的果实上下文)
     │   └── [各种果实] → fruit_trait, types
     │       ├── normal/    (普通果实)
     │       ├── trap/      (陷阱果实)
@@ -74,6 +77,97 @@ snake2d_v2.rs (主入口)
     └── types (数据类型)
         └── (无依赖)
 ```
+
+---
+
+## 声明式游戏系统
+
+### 设计理念
+
+游戏采用声明式架构，将硬编码逻辑抽取到可配置的管理器中：
+
+1. **FruitSpawnManager**: 统一管理所有果实的生成规则
+2. **BombManager**: 封装炸弹爆炸和后遗症逻辑
+3. **FruitContext**: 扩展的上下文，让果实回调直接操作游戏资源
+
+### FruitSpawnManager
+
+声明式配置果实生成规则：
+
+```rust
+// src/game/spawn_manager.rs
+pub fn create_default_spawn_manager() -> FruitSpawnManager {
+    FruitSpawnManager::new()
+        // 陷阱果实：每3秒40%概率生成
+        .with_category_rule(
+            SpawnRule::new(FruitCategory::Trap)
+                .interval(3.0)
+                .probability(0.4)
+        )
+        // 功能果实：每帧1.5%概率，最多1个，蛇长>=10解锁
+        .with_category_rule(
+            SpawnRule::new(FruitCategory::Power)
+                .probability(0.015)
+                .max_count(1)
+                .unlock_length(10)
+        )
+        // 幸运方块：每帧0.3%概率，最多1个
+        .with_independent_rule(
+            IndependentSpawnRule::new("lucky")
+                .probability(0.003)
+                .max_count(1)
+        )
+        // 蛇蛋：每帧0.8%概率，最多1个，蛇长>=5解锁
+        .with_independent_rule(
+            IndependentSpawnRule::new("snake_egg")
+                .probability(0.008)
+                .max_count(1)
+                .unlock_length(5)
+        )
+}
+```
+
+### BombManager
+
+封装炸弹的所有逻辑：
+
+```rust
+// src/game/bomb_manager.rs
+impl BombManager {
+    /// 更新炸弹状态，返回爆炸结果
+    pub fn update(buff_state, snake_body, dt, rng) -> BombUpdateResult {
+        // 检测爆炸、生成粒子、计算截断位置
+    }
+    
+    /// 更新后遗症掉血
+    pub fn update_after_effect(buff_state, snake_len, dt) -> (need_bleed, game_over) {
+        // 每0.5秒掉一节
+    }
+}
+```
+
+### 果实回调完全封装
+
+每种果实的所有逻辑都封装在自己的文件中：
+
+```rust
+// src/fruits/special/snake_egg.rs
+impl FruitBehavior for SnakeEggFruit {
+    fn on_consume(&self, ctx: &mut FruitContext) -> ConsumeResult {
+        // 被吃掉：阻止孵化，加分
+    }
+
+    fn on_expire(&self, ctx: &mut FruitContext) {
+        // 过期：直接生成 AI 蛇
+        ctx.ai_manager.spawn_snake(ctx.snake, ctx.rng);
+    }
+}
+```
+
+**添加新果实时只需要**:
+1. 创建果实文件，实现 `FruitBehavior`
+2. 在 `create_fruit_registry()` 中注册
+3. 完成！不需要修改主循环
 
 ---
 
@@ -389,6 +483,25 @@ let y = from.y + (to.y - from.y) * blend;
 // 5 < 20? Yes → 选择第 2 个果实
 ```
 
+### 动态权重增长
+
+某些果实（如炸弹）的权重会随蛇长度增加：
+
+```rust
+// 炸弹果实配置:
+// spawn_weight: 5 (基础权重)
+// unlock_length: 6 (解锁长度)
+// weight_growth: 2 (每2格增加1权重)
+
+// 实际权重计算:
+// 实际权重 = spawn_weight + (snake_length - unlock_length) / weight_growth
+
+// 蛇长6:  5 + (6-6)/2  = 5
+// 蛇长10: 5 + (10-6)/2 = 7
+// 蛇长16: 5 + (16-6)/2 = 10
+// 蛇长26: 5 + (26-6)/2 = 15
+```
+
 ### 受伤动画状态机
 
 ```
@@ -398,6 +511,28 @@ None → Flashing → Crumbling → None
                  + 生成血液粒子
                  + 留下血迹
 ```
+
+### 炸弹状态机
+
+```
+吞食炸弹 → 炸弹在体内移动 → 到达蛇身一半位置 → 爆炸
+              ↓                    ↓
+         每0.3秒移动一格      截断蛇身 + 爆炸粒子
+              ↓                    ↓
+         闪烁频率递增          激活后遗症（5秒）
+                                   ↓
+                              每0.5秒掉一节尾巴
+```
+
+炸弹在体内时的视觉效果：
+- 黑色炸弹核心显示在当前位置
+- 红色警告闪烁（频率随位置增加：2Hz → 10Hz）
+- 引线火花效果
+
+后遗症期间：
+- 尾部显示撕裂纹理
+- 持续掉血（每0.5秒掉一节）
+- 可被恢复果实治愈
 
 ### 沙虫变身状态机
 
@@ -409,7 +544,17 @@ None → Flashing → Transforming → Exiting → Filling → FilledFlashing �
 
 ### AI 蛇系统
 
-AI 蛇是由蛇蛋果实触发生成的敌对蛇，增加游戏挑战性。
+AI 蛇是由蛇蛋果实过期孵化或幸运方块负面效果生成的敌对蛇，增加游戏挑战性。
+
+#### 蛇蛋孵化机制
+
+```
+蛇蛋生成 → 15秒倒计时
+    ↓
+玩家吃掉蛇蛋 → 阻止孵化，+5分
+    或
+蛇蛋过期 → 自动孵化 AI 蛇
+```
 
 #### 数据结构
 

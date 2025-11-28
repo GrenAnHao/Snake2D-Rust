@@ -96,6 +96,34 @@ pub fn draw_snake(
             let drip_color = Color { r: 0.2, g: 0.6, b: 0.2, a: 0.6 };
             draw_rectangle(x + CELL * 0.3, y + CELL + drip_y, 4.0, 6.0, drip_color);
         }
+        
+        // 炸弹在体内的效果
+        if buff.bomb_state.active && i == buff.bomb_state.position {
+            // 炸弹闪烁频率随位置增加
+            let flash_freq = buff.bomb_state.flash_frequency(snake.body.len());
+            let flash = (game_time * flash_freq * std::f32::consts::TAU).sin() * 0.5 + 0.5;
+            
+            // 黑色炸弹核心
+            let bomb_color = Color::new(0.1, 0.1, 0.1, 0.9);
+            draw_rectangle(x + 2.0, y + 2.0, CELL - 4.0, CELL - 4.0, bomb_color);
+            
+            // 闪烁的红色警告
+            let warn_color = Color::new(1.0, 0.2, 0.0, flash);
+            draw_rectangle(x, y, CELL, CELL, warn_color);
+            
+            // 引线火花
+            let spark_color = Color::new(1.0, 0.6, 0.0, flash);
+            draw_rectangle(x + CELL / 2.0 - 2.0, y - 2.0, 4.0, 4.0, spark_color);
+        }
+        
+        // 炸弹后遗症撕裂效果
+        if buff.bomb_after_effect.active && i == snake.body.len().saturating_sub(1) {
+            // 尾部撕裂纹理
+            let bleed_flash = (game_time * 8.0).sin() * 0.3 + 0.7;
+            let bleed_color = Color::new(0.8, 0.1, 0.1, bleed_flash);
+            draw_rectangle(x + CELL - 4.0, y + 2.0, 4.0, CELL - 4.0, bleed_color);
+            draw_rectangle(x + 2.0, y + CELL - 4.0, CELL - 4.0, 4.0, bleed_color);
+        }
     }
 }
 

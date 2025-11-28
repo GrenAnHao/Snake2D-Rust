@@ -307,81 +307,30 @@ pub fn draw_sandworm_exiting(snake: &[IVec2], exit_dir: IVec2, time: f32) {
 
 /// 绘制沙虫模式（完整状态机渲染）
 pub fn draw_sandworm_mode(snake: &[IVec2], buff: &BuffState, time: f32) {
-    let sand_color = sandworm_body_color();
-    let sand_head_color = sandworm_head_color();
-
     match buff.sandworm_phase {
         SandwormPhase::Flashing => {
-            // 闪烁效果
-            let flash = (time * 10.0).sin() > 0.0;
-            let color = if flash { sand_color } else { GREEN };
-            for (i, seg) in snake.iter().enumerate() {
-                let c = if i == 0 {
-                    if flash { sand_head_color } else { GREEN }
-                } else {
-                    color
-                };
-                draw_rectangle(seg.x as f32 * CELL, seg.y as f32 * CELL, CELL, CELL, c);
-            }
+            // 闪烁阶段：使用带特效的渲染
+            draw_sandworm_flashing(snake, time);
         }
         SandwormPhase::Transforming => {
-            // 逐节变色
-            for (i, seg) in snake.iter().enumerate() {
-                let color = if i < buff.sandworm_transform_index {
-                    if i == 0 { sand_head_color } else { sand_color }
-                } else if i == 0 {
-                    GREEN
-                } else {
-                    LIME
-                };
-                draw_rectangle(seg.x as f32 * CELL, seg.y as f32 * CELL, CELL, CELL, color);
-            }
+            // 变色阶段：使用带纹理的渲染
+            draw_sandworm_transforming(snake, buff, time);
         }
-        SandwormPhase::Exiting | SandwormPhase::Filling => {
-            // 沙虫颜色
-            for (i, seg) in snake.iter().enumerate() {
-                if seg.x >= 0 && seg.x < GRID_W && seg.y >= 0 && seg.y < GRID_H {
-                    let color = if i == 0 { sand_head_color } else { sand_color };
-                    draw_rectangle(seg.x as f32 * CELL, seg.y as f32 * CELL, CELL, CELL, color);
-                }
-            }
+        SandwormPhase::Exiting => {
+            // 退出阶段：带纹理和头部
+            draw_sandworm_exiting(snake, buff.sandworm_exit_dir, time);
+        }
+        SandwormPhase::Filling => {
+            // 填充阶段：带蠕动效果和纹理
+            draw_sandworm_filling(snake, buff, time);
         }
         SandwormPhase::FilledFlashing => {
-            // 填满后闪烁变红
-            let flash = (time * 8.0).sin() > 0.0;
-            let color = if flash {
-                Color { r: 0.8, g: 0.2, b: 0.2, a: 1.0 }
-            } else {
-                sand_color
-            };
-            for seg in snake {
-                if seg.x >= 0 && seg.x < GRID_W && seg.y >= 0 && seg.y < GRID_H {
-                    draw_rectangle(seg.x as f32 * CELL, seg.y as f32 * CELL, CELL, CELL, color);
-                }
-            }
+            // 填满后闪烁变红：使用专用渲染
+            draw_sandworm_filled_flashing(snake, time);
         }
         SandwormPhase::Consuming => {
-            // 坍缩动画
-            let progress = buff.sandworm_collapse_progress;
-            let center = buff.sandworm_collapse_center;
-
-            for (i, original_pos) in buff.sandworm_collapse_positions.iter().enumerate() {
-                // 插值到中心
-                let x = original_pos.x + (center.x - original_pos.x) * progress;
-                let y = original_pos.y + (center.y - original_pos.y) * progress;
-
-                // 缩小
-                let size = CELL * (1.0 - progress * 0.8);
-                let alpha = 1.0 - progress * 0.5;
-
-                let color = if i == 0 {
-                    Color { r: 0.55, g: 0.40, b: 0.25, a: alpha }
-                } else {
-                    Color { r: 0.76, g: 0.60, b: 0.42, a: alpha }
-                };
-
-                draw_rectangle(x - size / 2.0, y - size / 2.0, size, size, color);
-            }
+            // 坍缩动画：使用专用渲染
+            draw_sandworm_consuming(buff);
         }
         SandwormPhase::None => {}
     }

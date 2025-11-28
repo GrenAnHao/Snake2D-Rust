@@ -48,6 +48,7 @@ pub fn handle_consume_result(
 ///
 /// # 返回
 /// (是否消费了果实, 是否游戏结束)
+#[allow(clippy::too_many_arguments)]
 pub fn consume_fruit(
     fruit_idx: usize,
     fruits: &mut Vec<Fruit>,
@@ -61,6 +62,8 @@ pub fn consume_fruit(
     game_state: &mut GameState,
     rng: &mut ThreadRng,
     game_time: f32,
+    ai_manager: &mut crate::game::AIManager,
+    food: &mut IVec2,
 ) -> (bool, bool) {
     if fruit_idx >= fruits.len() {
         return (false, false);
@@ -75,7 +78,7 @@ pub fn consume_fruit(
         None => return (true, false),
     };
 
-    // 创建上下文
+    // 创建上下文 - 包含所有游戏资源的引用
     let mut ctx = FruitContext {
         snake: &mut snake.body,
         dir: &mut snake.dir,
@@ -87,6 +90,9 @@ pub fn consume_fruit(
         rng,
         game_time,
         fruit_pos,
+        ai_manager,
+        food,
+        fruits,
     };
 
     // 调用 on_consume
@@ -186,6 +192,10 @@ pub fn handle_fruit_effect(
                     "slow" => buff_state.activate_slow(),
                     "dizzy" => buff_state.activate_dizzy(),
                     "slime" => buff_state.activate_slime(),
+                    "bomb" => {
+                        // 激活炸弹状态
+                        buff_state.bomb_state.activate();
+                    }
                     _ => {}
                 }
             }

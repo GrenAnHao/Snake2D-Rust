@@ -54,6 +54,9 @@ pub mod fruit_handler;
 pub mod sandworm_manager;
 pub mod ai_snake;
 pub mod ai_manager;
+pub mod spawn_manager;
+pub mod bomb_manager;
+pub mod game_events;
 
 pub use snake::*;
 pub use collision::*;
@@ -63,3 +66,6 @@ pub use fruit_handler::*;
 pub use sandworm_manager::*;
 pub use ai_snake::{AISnake, AIMoveResult, AI_COLORS};
 pub use ai_manager::{AIManager, AIUpdateResult, DroppedFood};
+pub use spawn_manager::{FruitSpawnManager, SpawnRule, IndependentSpawnRule, create_default_spawn_manager};
+pub use bomb_manager::{BombManager, BombUpdateResult};
+pub use game_events::{GameEvent, SoundType, EventQueue, ExpireResult, handle_expired_fruits};

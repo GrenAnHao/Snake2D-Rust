@@ -21,9 +21,10 @@ impl SandwormFruit {
                 category: FruitCategory::Power,
                 color: Color { r: 0.76, g: 0.60, b: 0.42, a: 1.0 },
                 lifetime: SANDWORM_FRUIT_LIFETIME,
-                spawn_weight: 1,  // 最低权重，非常稀有
-                unlock_length: 15, // 需要更长的蛇才能解锁
+                spawn_weight: 5,  // 提高权重
+                unlock_length: 10, // 蛇长度>=10解锁
                 immune_to_buffs: false,
+                weight_growth: 0, // 不增长
             },
         }
     }

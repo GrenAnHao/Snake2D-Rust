@@ -116,7 +116,8 @@ impl AIManager {
         food: &mut IVec2,
         fruits: &mut Vec<Fruit>,
         player_body: &[IVec2],
-        player_has_immunity: bool,
+        player_can_pass_through: bool,
+        player_is_ghost: bool,  // 幽灵状态：AI蛇可以穿过玩家身体
         particles: &mut Vec<Particle>,
         registry: &FruitRegistry,
         wrap: bool,
@@ -153,12 +154,11 @@ impl AIManager {
             match move_result {
                 AIMoveResult::Normal(new_head) => {
                     // 检查是否撞到玩家身体
-                    if player_body.contains(&new_head) {
-                        if !player_has_immunity {
-                            // 玩家没有免疫，AI蛇死亡
-                            dead_indices.push(i);
-                            continue;
-                        }
+                    // 幽灵状态下，AI蛇可以穿过玩家身体（不会死亡）
+                    // 非幽灵状态下，AI蛇碰到玩家身体会死亡
+                    if player_body.contains(&new_head) && !player_is_ghost {
+                        dead_indices.push(i);
+                        continue;
                     }
                     
                     // 检查是否撞到其他 AI 蛇
@@ -195,7 +195,7 @@ impl AIManager {
                     if let Some(idx) = fruits.iter().position(|f| f.pos == new_head) {
                         let fruit = fruits.remove(idx);
                         
-                        // AI 蛇也会受到果实效果（简化处理）
+                        // AI 蛇和玩家一样受到果实效果（除了沙虫）
                         if let Some(config) = registry.get_config(fruit.type_id) {
                             match config.category {
                                 FruitCategory::Normal => {
@@ -203,26 +203,44 @@ impl AIManager {
                                     snake.grow();
                                 }
                                 FruitCategory::Trap => {
-                                    // 陷阱果实：应用负面效果
-                                    match fruit.type_id {
-                                        "freeze" => snake.buff_state.frozen = true,
-                                        "slow" => snake.buff_state.activate_slow(),
-                                        "dizzy" => snake.buff_state.activate_dizzy(),
-                                        "slime" => snake.buff_state.activate_slime(),
-                                        _ => {} // trap 果实对 AI 蛇无效
+                                    // 陷阱果实：应用负面效果（如果没有免疫）
+                                    if !snake.buff_state.has_immunity() {
+                                        match fruit.type_id {
+                                            "trap" => {
+                                                // 受伤：缩短蛇身
+                                                if snake.body.len() > 5 {
+                                                    snake.body.truncate(snake.body.len() - 2);
+                                                }
+                                            }
+                                            "freeze" => {
+                                                snake.buff_state.frozen = true;
+                                                snake.buff_state.freeze_timer = crate::constants::FREEZE_DURATION;
+                                            }
+                                            "slow" => snake.buff_state.activate_slow(),
+                                            "dizzy" => snake.buff_state.activate_dizzy(),
+                                            "slime" => snake.buff_state.activate_slime(),
+                                            "bomb" => snake.buff_state.bomb_state.activate(),
+                                            _ => {}
+                                        }
                                     }
                                 }
                                 FruitCategory::Power => {
-                                    // 功能果实：应用正面效果
+                                    // 功能果实：应用正面效果（沙虫除外）
                                     match fruit.type_id {
                                         "shield" => snake.buff_state.activate_shield(),
                                         "speed" => snake.buff_state.activate_speed(),
                                         "ghost" => snake.buff_state.activate_ghost(),
-                                        _ => snake.grow(), // 其他功能果实当作普通果实
+                                        "reverse" => snake.body.reverse(),
+                                        "heal" => snake.buff_state.clear_all_debuffs(),
+                                        "sandworm" => {
+                                            // AI 蛇不激活沙虫模式，只增长
+                                            snake.grow();
+                                        }
+                                        _ => snake.grow(),
                                     }
                                 }
                                 FruitCategory::Special => {
-                                    // 特殊果实：AI 蛇只增长
+                                    // 特殊果实：AI 蛇只增长（不触发幸运方块随机效果）
                                     snake.grow();
                                 }
                             }
@@ -249,13 +267,13 @@ impl AIManager {
             for snake in &self.snakes {
                 // 检查是否撞到 AI 蛇身体（不包括头，头对头另外处理）
                 if snake.body.iter().skip(1).any(|&p| p == player_head) {
-                    if !player_has_immunity {
+                    if !player_can_pass_through {
                         result.player_died = true;
                     }
                 }
                 // 头对头碰撞
                 if snake.head() == player_head {
-                    if !player_has_immunity {
+                    if !player_can_pass_through {
                         result.player_died = true;
                     }
                 }

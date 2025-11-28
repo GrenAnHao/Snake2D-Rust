@@ -22,6 +22,7 @@ impl ReverseFruit {
                 spawn_weight: 15,
                 unlock_length: 10,
                 immune_to_buffs: false,
+                weight_growth: 0, // 不增长
             },
         }
     }
@@ -50,5 +51,39 @@ impl FruitBehavior for ReverseFruit {
         }
 
         ConsumeResult::Continue
+    }
+
+    fn render(&self, x: f32, y: f32, time: f32) {
+        use crate::constants::CELL;
+        let cx = x + CELL / 2.0;
+        let cy = y + CELL / 2.0;
+        
+        // 粉色背景
+        let bg_color = Color::new(1.0, 0.3, 0.6, 1.0);
+        draw_rectangle(x + 2.0, y + 2.0, CELL - 4.0, CELL - 4.0, bg_color);
+        
+        // 双向箭头图案
+        let arrow_color = Color::new(1.0, 1.0, 1.0, 0.95);
+        
+        // 左箭头
+        draw_rectangle(x + 3.0, cy - 1.0, 6.0, 2.0, arrow_color);
+        draw_rectangle(x + 3.0, cy - 3.0, 2.0, 2.0, arrow_color);
+        draw_rectangle(x + 3.0, cy + 1.0, 2.0, 2.0, arrow_color);
+        draw_rectangle(x + 2.0, cy - 1.0, 2.0, 2.0, arrow_color);
+        
+        // 右箭头
+        draw_rectangle(cx + 1.0, cy - 1.0, 6.0, 2.0, arrow_color);
+        draw_rectangle(x + CELL - 5.0, cy - 3.0, 2.0, 2.0, arrow_color);
+        draw_rectangle(x + CELL - 5.0, cy + 1.0, 2.0, 2.0, arrow_color);
+        draw_rectangle(x + CELL - 4.0, cy - 1.0, 2.0, 2.0, arrow_color);
+        
+        // 中间分隔
+        let sep_color = Color::new(0.8, 0.2, 0.5, 1.0);
+        draw_rectangle(cx - 1.0, cy - 4.0, 2.0, 8.0, sep_color);
+        
+        // 旋转效果
+        let rotation_alpha = (time * 4.0).sin() * 0.3 + 0.5;
+        let glow = Color::new(1.0, 0.5, 0.8, rotation_alpha * 0.3);
+        draw_rectangle(x, y, CELL, CELL, glow);
     }
 }

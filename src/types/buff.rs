@@ -71,9 +71,11 @@ pub struct BuffState {
     pub slime_active: bool,
     pub slime_timer: f32,
 
-    // === AI蛇生成标记 ===
-    /// 幸运方块触发的 AI 蛇生成
-    pub pending_ai_spawn: bool,
+    // === 炸弹状态 ===
+    /// 炸弹在体内的状态
+    pub bomb_state: super::bomb::BombState,
+    /// 炸弹爆炸后遗症
+    pub bomb_after_effect: super::bomb::BombAfterEffect,
 }
 
 impl Default for BuffState {
@@ -106,14 +108,48 @@ impl Default for BuffState {
             dizzy_timer: 0.0,
             slime_active: false,
             slime_timer: 0.0,
-            pending_ai_spawn: false,
+            bomb_state: super::bomb::BombState::default(),
+            bomb_after_effect: super::bomb::BombAfterEffect::default(),
         }
     }
 }
 
 impl BuffState {
-    /// 检查是否有任何免疫效果激活
+    /// 检查是否有免疫效果激活（免疫 Debuff）
+    /// 
+    /// 只有护盾和沙虫模式提供免疫效果
+    /// 幽灵模式不提供免疫，只提供穿透能力
     pub fn has_immunity(&self) -> bool {
+        self.shield_active || self.sandworm_active
+    }
+    
+    /// 检查是否可以穿透障碍物（墙壁、自身、AI蛇）
+    /// 
+    /// 护盾、沙虫、幽灵都可以穿透
+    pub fn can_pass_through(&self) -> bool {
         self.shield_active || self.sandworm_active || self.ghost_active
+    }
+    
+    /// 清除所有 Debuff 效果（恢复果实使用）
+    pub fn clear_all_debuffs(&mut self) {
+        // 清除冰冻
+        self.frozen = false;
+        self.freeze_timer = 0.0;
+        
+        // 清除减速
+        self.slow_active = false;
+        self.slow_timer = 0.0;
+        
+        // 清除眩晕
+        self.dizzy_active = false;
+        self.dizzy_timer = 0.0;
+        
+        // 清除粘液
+        self.slime_active = false;
+        self.slime_timer = 0.0;
+        
+        // 清除炸弹状态
+        self.bomb_state.clear();
+        self.bomb_after_effect.clear();
     }
 }

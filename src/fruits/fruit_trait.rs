@@ -86,6 +86,7 @@ pub enum ConsumeResult {
 /// - `spawn_weight`: 同类别内的生成权重，数值越大越容易生成
 /// - `unlock_length`: 蛇达到此长度后才会生成该果实
 /// - `immune_to_buffs`: 如果为 true，即使有护盾也会生效
+/// - `weight_growth`: 每增长N格增加的权重（0表示不增长）
 #[derive(Clone)]
 pub struct FruitConfig {
     /// 唯一标识符
@@ -114,7 +115,7 @@ pub struct FruitConfig {
     /// 果实在场景中存在的时间。0 表示永久存在。
     pub lifetime: f32,
 
-    /// 生成权重
+    /// 生成权重（基础值）
     ///
     /// 同类别内的相对生成概率。例如权重 10 的果实
     /// 比权重 5 的果实生成概率高一倍。
@@ -131,6 +132,18 @@ pub struct FruitConfig {
     /// 如果为 true，即使玩家有护盾/幽灵等免疫效果，
     /// 该果实的效果仍然会生效。
     pub immune_to_buffs: bool,
+
+    /// 权重增长系数
+    ///
+    /// 每超过 unlock_length 多少格，权重增加1。
+    /// 0 表示不增长（默认）。
+    /// 
+    /// 例如: weight_growth = 5, unlock_length = 6, spawn_weight = 5
+    /// - 蛇长6: 权重 = 5 + (6-6)/5 = 5
+    /// - 蛇长11: 权重 = 5 + (11-6)/5 = 6
+    /// - 蛇长16: 权重 = 5 + (16-6)/5 = 7
+    /// - 蛇长26: 权重 = 5 + (26-6)/5 = 9
+    pub weight_growth: u32,
 }
 
 /// 果实行为 Trait（核心接口）

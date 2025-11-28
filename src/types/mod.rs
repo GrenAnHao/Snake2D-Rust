@@ -9,6 +9,7 @@ pub mod damage;
 pub mod portal;
 pub mod combo;
 pub mod fruit;
+pub mod bomb;
 
 pub use game_state::*;
 pub use particle::*;
@@ -17,3 +18,4 @@ pub use damage::*;
 pub use portal::*;
 pub use combo::*;
 pub use fruit::*;
+pub use bomb::*;

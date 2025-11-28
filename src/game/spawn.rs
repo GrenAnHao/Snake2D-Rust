@@ -105,15 +105,24 @@ pub fn spawn_portal(
     })
 }
 
+/// 过期果实信息
+pub struct ExpiredFruit {
+    pub pos: IVec2,
+    pub type_id: &'static str,
+}
+
 /// 更新果实列表，移除过期果实
 ///
 /// # 返回
-/// 过期果实的位置列表
-pub fn update_fruits(fruits: &mut Vec<Fruit>, game_time: f32) -> Vec<IVec2> {
+/// 过期果实的信息列表（位置和类型）
+pub fn update_fruits(fruits: &mut Vec<Fruit>, game_time: f32) -> Vec<ExpiredFruit> {
     let mut expired = vec![];
     fruits.retain(|f| {
         if f.is_expired(game_time) {
-            expired.push(f.pos);
+            expired.push(ExpiredFruit {
+                pos: f.pos,
+                type_id: f.type_id,
+            });
             false
         } else {
             true
@@ -125,6 +134,94 @@ pub fn update_fruits(fruits: &mut Vec<Fruit>, game_time: f32) -> Vec<IVec2> {
 /// 更新传送门列表，移除过期传送门
 pub fn update_portals(portals: &mut Vec<Portal>, game_time: f32) {
     portals.retain(|p| game_time - p.spawn_time < p.lifetime);
+}
+
+use crate::fruits::FruitContext;
+use crate::types::{BuffState, DamageState, Particle, ComboState};
+use crate::game::AIManager;
+
+/// 更新果实列表，处理过期果实并调用 on_expire 回调
+///
+/// 这是声明式架构的核心函数：每种果实的过期逻辑都在其自己的 on_expire 回调中定义，
+/// 主循环不需要知道具体有哪些果实类型。
+///
+/// # 参数
+/// - `fruits`: 果实列表
+/// - `registry`: 果实注册表
+/// - `snake`: 蛇身位置列表
+/// - `dir`: 蛇移动方向
+/// - `buff_state`: Buff状态
+/// - `damage_state`: 受伤状态
+/// - `particles`: 粒子列表
+/// - `score`: 当前分数
+/// - `combo_state`: Combo状态
+/// - `ai_manager`: AI蛇管理器
+/// - `food`: 食物位置
+/// - `game_time`: 当前游戏时间
+/// - `rng`: 随机数生成器
+///
+/// # 返回
+/// 过期果实的信息列表（位置和类型）
+#[allow(clippy::too_many_arguments)]
+pub fn update_fruits_with_callbacks(
+    fruits: &mut Vec<Fruit>,
+    registry: &FruitRegistry,
+    snake: &mut Vec<IVec2>,
+    dir: &mut IVec2,
+    buff_state: &mut BuffState,
+    damage_state: &mut DamageState,
+    particles: &mut Vec<Particle>,
+    score: &mut u32,
+    combo_state: &mut ComboState,
+    ai_manager: &mut AIManager,
+    food: &mut IVec2,
+    game_time: f32,
+    rng: &mut ThreadRng,
+) -> Vec<ExpiredFruit> {
+    let mut expired = vec![];
+    
+    // 收集过期果实的索引和信息
+    let expired_indices: Vec<(usize, IVec2, &'static str)> = fruits
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| f.is_expired(game_time))
+        .map(|(i, f)| (i, f.pos, f.type_id))
+        .collect();
+    
+    // 为每个过期果实调用 on_expire 回调
+    for &(_, pos, type_id) in &expired_indices {
+        if let Some(behavior) = registry.get(type_id) {
+            // 创建上下文 - 注意：这里需要临时借用 fruits
+            // 由于我们还没有移除过期果实，需要小心处理
+            let mut ctx = FruitContext {
+                snake,
+                dir,
+                buff_state,
+                particles,
+                damage_state,
+                score,
+                combo_state,
+                rng,
+                game_time,
+                fruit_pos: pos,
+                ai_manager,
+                food,
+                fruits,
+            };
+            
+            // 调用 on_expire 回调 - 所有特定逻辑都在各果实的实现中
+            behavior.on_expire(&mut ctx);
+        }
+        
+        expired.push(ExpiredFruit { pos, type_id });
+    }
+    
+    // 移除过期果实（从后往前移除以保持索引正确）
+    for &(idx, _, _) in expired_indices.iter().rev() {
+        fruits.remove(idx);
+    }
+    
+    expired
 }
 
 #[cfg(test)]

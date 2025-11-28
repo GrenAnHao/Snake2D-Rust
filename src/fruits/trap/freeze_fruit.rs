@@ -25,6 +25,7 @@ impl FreezeFruit {
                 spawn_weight: 15,
                 unlock_length: 0,
                 immune_to_buffs: true,
+                weight_growth: 0, // 不增长
             },
         }
     }
@@ -89,5 +90,49 @@ impl FruitBehavior for FreezeFruit {
         Self::spawn_freeze_particles(ctx.particles, ctx.snake, ctx.rng);
 
         ConsumeResult::ResetCombo
+    }
+
+    fn render(&self, x: f32, y: f32, time: f32) {
+        let cx = x + CELL / 2.0;
+        let cy = y + CELL / 2.0;
+        
+        // 浅蓝色背景
+        let bg_color = Color::new(0.5, 0.8, 1.0, 1.0);
+        draw_rectangle(x + 2.0, y + 2.0, CELL - 4.0, CELL - 4.0, bg_color);
+        
+        // 雪花图案（六角形）
+        let snow_color = Color::new(1.0, 1.0, 1.0, 0.95);
+        let arm_len = 6.0;
+        
+        // 6条雪花臂
+        for i in 0..6 {
+            let angle = (i as f32 / 6.0) * std::f32::consts::TAU;
+            let dx = angle.cos() * arm_len;
+            let dy = angle.sin() * arm_len;
+            draw_line(cx, cy, cx + dx, cy + dy, 2.0, snow_color);
+            
+            // 小分支
+            let branch_len = 3.0;
+            let branch_angle1 = angle + 0.5;
+            let branch_angle2 = angle - 0.5;
+            let mid_x = cx + dx * 0.6;
+            let mid_y = cy + dy * 0.6;
+            draw_line(mid_x, mid_y, 
+                mid_x + branch_angle1.cos() * branch_len, 
+                mid_y + branch_angle1.sin() * branch_len, 
+                1.0, snow_color);
+            draw_line(mid_x, mid_y, 
+                mid_x + branch_angle2.cos() * branch_len, 
+                mid_y + branch_angle2.sin() * branch_len, 
+                1.0, snow_color);
+        }
+        
+        // 中心点
+        draw_rectangle(cx - 2.0, cy - 2.0, 4.0, 4.0, snow_color);
+        
+        // 闪烁效果
+        let sparkle = (time * 5.0).sin() * 0.3 + 0.7;
+        let glow = Color::new(0.8, 0.95, 1.0, sparkle * 0.3);
+        draw_rectangle(x, y, CELL, CELL, glow);
     }
 }

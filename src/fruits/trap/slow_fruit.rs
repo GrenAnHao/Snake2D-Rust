@@ -23,6 +23,7 @@ impl SlowFruit {
                 spawn_weight: 20,
                 unlock_length: 0,
                 immune_to_buffs: true,
+                weight_growth: 0, // 不增长
             },
         }
     }
@@ -50,5 +51,40 @@ impl FruitBehavior for SlowFruit {
         ctx.buff_state.slow_timer = SLOW_DURATION;
 
         ConsumeResult::ResetCombo
+    }
+
+    fn render(&self, x: f32, y: f32, time: f32) {
+        use crate::constants::CELL;
+        let cx = x + CELL / 2.0;
+        let cy = y + CELL / 2.0;
+        
+        // 橙色背景
+        let bg_color = Color::new(1.0, 0.5, 0.1, 1.0);
+        draw_rectangle(x + 2.0, y + 2.0, CELL - 4.0, CELL - 4.0, bg_color);
+        
+        // 蜗牛图案
+        let shell_color = Color::new(0.6, 0.3, 0.1, 1.0);
+        let body_color = Color::new(0.9, 0.8, 0.6, 1.0);
+        
+        // 蜗牛壳（螺旋）
+        draw_rectangle(cx - 2.0, cy - 4.0, 8.0, 8.0, shell_color);
+        draw_rectangle(cx, cy - 2.0, 4.0, 4.0, Color::new(0.8, 0.5, 0.2, 1.0));
+        draw_rectangle(cx + 1.0, cy - 1.0, 2.0, 2.0, Color::new(0.5, 0.25, 0.1, 1.0));
+        
+        // 蜗牛身体
+        draw_rectangle(x + 3.0, cy + 2.0, 10.0, 4.0, body_color);
+        draw_rectangle(x + 2.0, cy + 3.0, 3.0, 2.0, body_color);
+        
+        // 触角
+        draw_rectangle(x + 4.0, cy - 1.0, 2.0, 4.0, body_color);
+        draw_rectangle(x + 3.0, cy - 2.0, 2.0, 2.0, body_color);
+        
+        // 眼睛
+        draw_rectangle(x + 3.0, cy - 2.0, 1.0, 1.0, Color::new(0.1, 0.1, 0.1, 1.0));
+        
+        // 脉动效果
+        let pulse = (time * 2.0).sin() * 0.2 + 0.8;
+        let glow = Color::new(1.0, 0.6, 0.2, (1.0 - pulse) * 0.3);
+        draw_rectangle(x, y, CELL, CELL, glow);
     }
 }

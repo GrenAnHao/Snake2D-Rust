@@ -29,11 +29,37 @@ pub fn draw_fruits(fruits: &[Fruit], registry: &FruitRegistry, game_time: f32) {
     }
 }
 
-/// 绘制普通食物
+/// 绘制普通食物（苹果样式）
 pub fn draw_food(pos: IVec2) {
     let x = pos.x as f32 * CELL;
     let y = pos.y as f32 * CELL;
-    draw_rectangle(x, y, CELL, CELL, RED);
+    let cx = x + CELL / 2.0;
+    let _cy = y + CELL / 2.0 + 1.0; // 稍微下移，给茎留空间
+    
+    // 黑色描边（先画，作为底层）
+    let outline_color = Color::new(0.0, 0.0, 0.0, 1.0);
+    draw_rectangle(x + 3.0, y + 5.0, CELL - 6.0, CELL - 7.0, outline_color);
+    draw_rectangle(x + 5.0, y + 4.0, CELL - 10.0, CELL - 5.0, outline_color);
+    
+    // 苹果主体（红色，简洁的圆角矩形）
+    let apple_color = Color::new(0.9, 0.15, 0.15, 1.0);
+    draw_rectangle(x + 4.0, y + 6.0, CELL - 8.0, CELL - 9.0, apple_color);
+    draw_rectangle(x + 6.0, y + 5.0, CELL - 12.0, CELL - 7.0, apple_color);
+    
+    // 苹果顶部凹陷（深红色）
+    draw_rectangle(cx - 2.0, y + 5.0, 4.0, 2.0, Color::new(0.6, 0.1, 0.1, 1.0));
+    
+    // 苹果茎（棕色）
+    let stem_color = Color::new(0.35, 0.2, 0.1, 1.0);
+    draw_rectangle(cx - 1.0, y + 2.0, 2.0, 4.0, stem_color);
+    
+    // 叶子（绿色）
+    let leaf_color = Color::new(0.2, 0.65, 0.2, 1.0);
+    draw_rectangle(cx + 1.0, y + 2.0, 4.0, 2.0, leaf_color);
+    draw_rectangle(cx + 3.0, y + 3.0, 2.0, 2.0, leaf_color);
+    
+    // 高光
+    draw_rectangle(x + 6.0, y + 7.0, 2.0, 2.0, Color::new(1.0, 1.0, 1.0, 0.5));
 }
 
 /// 绘制进度条

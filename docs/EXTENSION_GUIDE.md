@@ -52,7 +52,7 @@ impl MagnetFruit {
                 // 存在时长：8秒后消失
                 lifetime: 8.0,
                 
-                // 生成权重：10（与其他功能果实相同）
+                // 生成权重：10（基础值）
                 spawn_weight: 10,
                 
                 // 解锁条件：蛇长度达到15
@@ -60,6 +60,11 @@ impl MagnetFruit {
                 
                 // 不受Buff免疫影响（正面效果）
                 immune_to_buffs: false,
+                
+                // 权重增长系数：0表示不增长
+                // 如果设为2，则每超过unlock_length 2格，权重+1
+                // 例如炸弹果实使用 weight_growth: 2，蛇越长炸弹越多
+                weight_growth: 0,
             },
         }
     }
@@ -520,7 +525,99 @@ pub const AI_COLORS: [Color; 6] = [
 ];
 ```
 
-### 蛇蛋果实配置
+### 炸弹果实系统
+
+炸弹果实是一个复杂的陷阱果实，涉及多个系统的协作：
+
+#### 数据结构
+
+```rust
+// src/types/bomb.rs
+pub struct BombState {
+    pub active: bool,           // 是否有炸弹在体内
+    pub position: usize,        // 炸弹当前位置索引
+    pub move_timer: f32,        // 移动计时器
+    pub move_interval: f32,     // 移动间隔（0.3秒）
+}
+
+pub struct BombAfterEffect {
+    pub active: bool,           // 是否在后遗症期间
+    pub timer: f32,             // 剩余时间（5秒）
+    pub bleed_timer: f32,       // 掉血计时器
+    pub torn_index: usize,      // 撕裂位置
+}
+```
+
+#### 核心逻辑
+
+```rust
+// src/game/buff_manager.rs
+impl BuffState {
+    pub fn update_bomb(&mut self, dt: f32, snake_len: usize) -> Option<usize> {
+        if !self.bomb_state.active { return None; }
+        
+        self.bomb_state.move_timer += dt;
+        if self.bomb_state.move_timer >= self.bomb_state.move_interval {
+            self.bomb_state.move_timer -= self.bomb_state.move_interval;
+            self.bomb_state.position += 1;
+            
+            // 到达蛇身一半位置时爆炸
+            if self.bomb_state.should_explode(snake_len) {
+                let explode_pos = self.bomb_state.position;
+                self.bomb_state.clear();
+                return Some(explode_pos);
+            }
+        }
+        None
+    }
+}
+```
+
+#### 渲染效果
+
+```rust
+// src/render/snake_renderer.rs
+// 炸弹在体内的闪烁效果
+if buff.bomb_state.active && i == buff.bomb_state.position {
+    let flash_freq = buff.bomb_state.flash_frequency(snake.body.len());
+    let flash = (game_time * flash_freq * TAU).sin() * 0.5 + 0.5;
+    // 绘制黑色核心 + 红色警告闪烁
+}
+```
+
+### 恢复果实
+
+恢复果实可以清除所有 Debuff，包括炸弹状态：
+
+```rust
+// src/types/buff.rs
+impl BuffState {
+    pub fn clear_all_debuffs(&mut self) {
+        self.frozen = false;
+        self.slow_active = false;
+        self.dizzy_active = false;
+        self.slime_active = false;
+        self.bomb_state.clear();
+        self.bomb_after_effect.clear();
+    }
+}
+```
+
+### 蛇蛋果实
+
+蛇蛋是一个特殊的果实，采用"过期孵化"机制：
+
+#### 行为逻辑
+
+```
+蛇蛋生成 → 15秒倒计时
+    ↓
+玩家吃掉蛇蛋 → 阻止孵化，+5分
+    或
+蛇蛋过期 → 自动孵化 AI 蛇
+```
+
+#### 配置
 
 编辑 `src/fruits/special/snake_egg.rs`:
 
@@ -530,10 +627,23 @@ FruitConfig {
     name: "蛇蛋",
     category: FruitCategory::Special,
     color: Color::new(0.95, 0.9, 0.8, 1.0),
-    lifetime: 15.0,
+    lifetime: 15.0,      // 15秒后过期孵化
     spawn_weight: 50,    // 生成权重
     unlock_length: 5,    // 蛇长度达到5后解锁
     immune_to_buffs: false,
+}
+```
+
+#### 主循环中的孵化逻辑
+
+```rust
+// src/snake2d_v2.rs
+// 蛇蛋过期时自动生成 AI 蛇
+let expired_fruits = update_fruits(&mut world.fruits, world.game_time);
+for expired in &expired_fruits {
+    if expired.type_id == "snake_egg" {
+        world.ai_manager.spawn_snake(&world.snake.body, &mut rng);
+    }
 }
 ```
 

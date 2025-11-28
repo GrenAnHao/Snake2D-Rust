@@ -64,8 +64,8 @@ pub use fruit_context::*;
 
 
 use normal::NormalFruit;
-use trap::{TrapFruit, FreezeFruit, SlowFruit, DizzyFruit, SlimeFruit};
-use power::{ShieldFruit, SpeedFruit, GhostFruit, ReverseFruit, SandwormFruit};
+use trap::{TrapFruit, FreezeFruit, SlowFruit, DizzyFruit, SlimeFruit, BombFruit};
+use power::{ShieldFruit, SpeedFruit, GhostFruit, ReverseFruit, SandwormFruit, HealFruit};
 use special::{LuckyFruit, SnakeEggFruit};
 
 /// 创建并初始化果实注册表
@@ -83,6 +83,7 @@ pub fn create_fruit_registry() -> FruitRegistry {
     registry.register(Box::new(SlowFruit::new()));
     registry.register(Box::new(DizzyFruit::new()));
     registry.register(Box::new(SlimeFruit::new()));
+    registry.register(Box::new(BombFruit::new()));
 
     // 功能果实
     registry.register(Box::new(ShieldFruit::new()));
@@ -90,6 +91,7 @@ pub fn create_fruit_registry() -> FruitRegistry {
     registry.register(Box::new(GhostFruit::new()));
     registry.register(Box::new(ReverseFruit::new()));
     registry.register(Box::new(SandwormFruit::new()));
+    registry.register(Box::new(HealFruit::new()));
 
     // 特殊果实
     registry.register(Box::new(LuckyFruit::new()));

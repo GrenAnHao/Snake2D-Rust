@@ -71,6 +71,37 @@ impl BuffState {
                 self.slime_timer = 0.0;
             }
         }
+        
+        // 炸弹后遗症（掉血由主循环处理）
+        if self.bomb_after_effect.active {
+            self.bomb_after_effect.timer -= dt;
+            if self.bomb_after_effect.timer <= 0.0 {
+                self.bomb_after_effect.clear();
+            }
+        }
+    }
+    
+    /// 更新炸弹在体内的移动
+    /// 返回 Some(爆炸位置) 如果炸弹应该爆炸
+    pub fn update_bomb(&mut self, dt: f32, snake_len: usize) -> Option<usize> {
+        if !self.bomb_state.active {
+            return None;
+        }
+        
+        self.bomb_state.move_timer += dt;
+        if self.bomb_state.move_timer >= self.bomb_state.move_interval {
+            self.bomb_state.move_timer -= self.bomb_state.move_interval;
+            self.bomb_state.position += 1;
+            
+            // 检查是否到达爆炸位置（蛇身一半）
+            if self.bomb_state.should_explode(snake_len) {
+                let explode_pos = self.bomb_state.position;
+                self.bomb_state.clear();
+                return Some(explode_pos);
+            }
+        }
+        
+        None
     }
 
     /// 激活护盾

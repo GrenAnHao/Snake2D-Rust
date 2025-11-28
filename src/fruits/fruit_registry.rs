@@ -66,7 +66,7 @@ impl FruitRegistry {
         self.fruits.get(id).map(|b| b.config())
     }
 
-    /// 按类别随机选择果实（考虑权重和解锁条件）
+    /// 按类别随机选择果实（考虑权重、解锁条件和增长系数）
     pub fn random_by_category(
         &self,
         category: FruitCategory,
@@ -75,13 +75,22 @@ impl FruitRegistry {
     ) -> Option<&'static str> {
         let ids = self.by_category.get(&category)?;
 
-        // 过滤已解锁的果实并计算权重
+        // 过滤已解锁的果实并计算动态权重
         let candidates: Vec<(&'static str, u32)> = ids
             .iter()
             .filter_map(|&id| {
                 let config = self.get_config(id)?;
                 if config.unlock_length <= snake_length {
-                    Some((id, config.spawn_weight))
+                    // 计算动态权重
+                    let base_weight = config.spawn_weight;
+                    let growth_bonus = if config.weight_growth > 0 {
+                        // 超过解锁长度的部分，每 weight_growth 格增加1权重
+                        let extra_length = snake_length.saturating_sub(config.unlock_length);
+                        (extra_length as u32) / config.weight_growth
+                    } else {
+                        0
+                    };
+                    Some((id, base_weight + growth_bonus))
                 } else {
                     None
                 }

@@ -25,6 +25,7 @@ impl LuckyFruit {
                 spawn_weight: 100,
                 unlock_length: 0,
                 immune_to_buffs: false,
+                weight_growth: 0, // 不增长
             },
         }
     }
@@ -146,10 +147,8 @@ impl FruitBehavior for LuckyFruit {
                     }
                 }
                 _ => {
-                    // 生成 AI 蛇（蛇蛋效果）
-                    // 设置一个特殊标记，通过 buff_state 传递
-                    // pending_ai_spawn 会在主循环中检查
-                    ctx.buff_state.pending_ai_spawn = true;
+                    // 生成 AI 蛇 - 直接调用 ai_manager，不需要事件中转
+                    ctx.ai_manager.spawn_snake(ctx.snake, ctx.rng);
                 }
             }
             ConsumeResult::ResetCombo

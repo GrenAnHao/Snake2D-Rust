@@ -22,6 +22,7 @@ impl NormalFruit {
                 spawn_weight: 100,
                 unlock_length: 0,
                 immune_to_buffs: false,
+                weight_growth: 0, // 不增长
             },
         }
     }

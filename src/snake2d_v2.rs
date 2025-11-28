@@ -62,7 +62,6 @@ use rtest::types::{
 use rtest::fruits::{
     create_fruit_registry,  // 创建并初始化果实注册表
     FruitRegistry,          // 果实注册表: 管理所有果实类型
-    FruitCategory,          // 果实类别: Normal, Trap, Power, Special
 };
 
 // --- 游戏逻辑模块 ---
@@ -77,9 +76,8 @@ use rtest::game::{
 
     // 生成逻辑
     spawn_food,         // 生成食物位置
-    spawn_fruit,        // 生成果实实例
     spawn_portal,       // 生成传送门
-    update_fruits,      // 更新果实列表 (移除过期)
+    update_fruits_with_callbacks, // 更新果实列表并调用过期回调
     update_portals,     // 更新传送门列表 (移除过期)
 
     // 状态更新
@@ -87,6 +85,7 @@ use rtest::game::{
     update_particles,           // 更新粒子 (移动、衰减)
     update_damage_animation,    // 更新受伤动画状态机
     update_blood_stains,        // 更新血迹 (移除过期)
+    spawn_blood_particles,      // 生成血液粒子
     update_sandworm_mode,       // 更新沙虫模式状态机
 
     // 果实效果
@@ -94,6 +93,13 @@ use rtest::game::{
 
     // AI 蛇系统
     AIManager,          // AI蛇管理器: 生成、更新、碰撞检测
+    
+    // 果实生成管理器
+    FruitSpawnManager,          // 果实生成管理器
+    create_default_spawn_manager, // 创建默认生成管理器
+    
+    // 炸弹管理器
+    BombManager,        // 炸弹管理器
 };
 
 // --- 渲染模块 ---
@@ -244,16 +250,8 @@ struct GameWorld {
     // 生成计时器
     // -------------------------------------------------------------------------
 
-    /// 陷阱果实生成计时器
-    trap_spawn_timer: f32,
-
     /// 传送门生成计时器
     portal_spawn_timer: f32,
-
-    /// 功能果实是否已解锁
-    ///
-    /// 蛇长度达到10后解锁
-    power_fruit_enabled: bool,
 
     // -------------------------------------------------------------------------
     // 系统
@@ -263,6 +261,11 @@ struct GameWorld {
     ///
     /// 管理所有已注册的果实类型
     registry: FruitRegistry,
+    
+    /// 果实生成管理器
+    ///
+    /// 统一管理所有果实类别的生成逻辑，支持声明式配置
+    spawn_manager: FruitSpawnManager,
 
     // -------------------------------------------------------------------------
     // AI 蛇系统
@@ -272,11 +275,6 @@ struct GameWorld {
     ///
     /// 管理所有 AI 蛇的生成、移动、碰撞和死亡
     ai_manager: AIManager,
-
-    /// 待生成的 AI 蛇数量
-    ///
-    /// 吃到蛇蛋后设置，在下一帧生成
-    pending_ai_spawns: u32,
 }
 
 impl GameWorld {
@@ -302,12 +300,10 @@ impl GameWorld {
             high_score: 0,
             game_time: 0.0,
             wrap: true,
-            trap_spawn_timer: 0.0,
             portal_spawn_timer: 0.0,
-            power_fruit_enabled: false,
             registry: create_fruit_registry(),
+            spawn_manager: create_default_spawn_manager(),
             ai_manager: AIManager::new(),
-            pending_ai_spawns: 0,
         }
     }
 
@@ -329,11 +325,9 @@ impl GameWorld {
         self.state = GameState::Playing;
         self.score = 0;
         self.game_time = 0.0;
-        self.trap_spawn_timer = 0.0;
         self.portal_spawn_timer = 0.0;
-        self.power_fruit_enabled = false;
+        self.spawn_manager.reset();
         self.ai_manager.reset();
-        self.pending_ai_spawns = 0;
     }
 }
 
@@ -501,13 +495,13 @@ async fn main() {
 
             // --- 移动蛇 ---
             // 护盾/幽灵/沙虫模式可穿过自己
-            let can_pass_self = world.buff_state.has_immunity();
+            let can_pass_self = world.buff_state.can_pass_through();
             let move_result = world.snake.move_forward(world.wrap, can_pass_self);
 
             match move_result {
                 // 碰撞处理
                 MoveResult::WallCollision | MoveResult::SelfCollision => {
-                    if !world.buff_state.has_immunity() {
+                    if !world.buff_state.can_pass_through() {
                         world.state = GameState::GameOver;
                         break;
                     }
@@ -533,10 +527,8 @@ async fn main() {
                     if let Some(idx) = check_fruit_collision(new_head, &world.fruits) {
                         let fruit = world.fruits.remove(idx);
                         
-                        // 特殊处理：蛇蛋果实生成 AI 蛇
-                        if fruit.type_id == "snake_egg" {
-                            world.pending_ai_spawns += 1;
-                        }
+                        // 蛇蛋被吃掉 = 阻止孵化，不生成 AI 蛇
+                        // AI 蛇只在蛇蛋过期时自动生成
                         
                         update_combo(&mut world.combo_state, world.game_time);
 
@@ -565,7 +557,7 @@ async fn main() {
                     }
                     
                     // 检查是否撞到 AI 蛇身体
-                    if !world.buff_state.has_immunity() {
+                    if !world.buff_state.can_pass_through() {
                         for ai_snake in &world.ai_manager.snakes {
                             // 撞到 AI 蛇身体（不包括头）
                             if ai_snake.body.iter().skip(1).any(|&p| p == new_head) {
@@ -616,22 +608,60 @@ async fn main() {
 
             // --- 更新 Buff 计时器 ---
             world.buff_state.update(dt);
+            
+            // --- 更新炸弹状态（使用 BombManager） ---
+            let bomb_result = BombManager::update(
+                &mut world.buff_state,
+                &world.snake.body,
+                dt,
+                &mut rng,
+            );
+            
+            // 处理炸弹爆炸结果
+            if let Some(truncate_pos) = bomb_result.truncate_to {
+                // 添加爆炸粒子
+                world.particles.extend(bomb_result.particles);
+                // 截断蛇身
+                world.snake.body.truncate(truncate_pos);
+                // 检查游戏结束
+                if bomb_result.game_over || world.snake.body.len() < 3 {
+                    world.state = GameState::GameOver;
+                }
+            }
+            
+            // --- 炸弹后遗症掉血（使用 BombManager） ---
+            let (need_bleed, bleed_game_over) = BombManager::update_after_effect(
+                &mut world.buff_state,
+                world.snake.body.len(),
+                dt,
+            );
+            if need_bleed {
+                // 获取尾部位置用于生成血迹
+                if let Some(&tail_pos) = world.snake.body.last() {
+                    let center = vec2(
+                        tail_pos.x as f32 * CELL + CELL / 2.0,
+                        tail_pos.y as f32 * CELL + CELL / 2.0,
+                    );
+                    // 生成血液粒子
+                    spawn_blood_particles(&mut world.particles, center, &mut rng);
+                    // 留下血迹
+                    world.blood_stains.push(BloodStain {
+                        pos: tail_pos,
+                        spawn_time: world.game_time,
+                        lifetime: 5.0,
+                        size: rng.gen_range(0.6..1.0),
+                        alpha: rng.gen_range(0.5..0.8),
+                    });
+                }
+                world.snake.body.pop();
+            }
+            if bleed_game_over {
+                world.state = GameState::GameOver;
+            }
 
             // --- 冰冻粒子效果 ---
             if world.buff_state.frozen && rng.gen_bool(0.3) {
                 spawn_freeze_particles(&mut world.particles, &world.snake.body, &mut rng);
-            }
-            
-            // --- 生成待处理的 AI 蛇 ---
-            while world.pending_ai_spawns > 0 {
-                world.ai_manager.spawn_snake(&world.snake.body, &mut rng);
-                world.pending_ai_spawns -= 1;
-            }
-            
-            // --- 检查幸运方块触发的 AI 蛇生成 ---
-            if world.buff_state.pending_ai_spawn {
-                world.buff_state.pending_ai_spawn = false;
-                world.ai_manager.spawn_snake(&world.snake.body, &mut rng);
             }
             
             // --- 更新 AI 蛇决策 ---
@@ -649,7 +679,8 @@ async fn main() {
                 &mut world.food,
                 &mut world.fruits,
                 &world.snake.body,
-                world.buff_state.has_immunity(),
+                world.buff_state.can_pass_through(),
+                world.buff_state.ghost_active,  // 幽灵状态：AI蛇可以穿过玩家
                 &mut world.particles,
                 &world.registry,
                 world.wrap,
@@ -666,88 +697,36 @@ async fn main() {
             // --- 更新掉落的食物 ---
             world.ai_manager.update_dropped_foods(world.game_time);
 
-            // --- 更新果实（移除过期） ---
-            update_fruits(&mut world.fruits, world.game_time);
+            // --- 更新果实（移除过期并调用 on_expire 回调） ---
+            // 所有过期逻辑都在各果实的 on_expire 回调中处理
+            // 例如：蛇蛋过期时会在其 on_expire 中直接调用 ai_manager.spawn_snake()
+            let _expired_fruits = update_fruits_with_callbacks(
+                &mut world.fruits,
+                &world.registry,
+                &mut world.snake.body,
+                &mut world.snake.dir,
+                &mut world.buff_state,
+                &mut world.damage_state,
+                &mut world.particles,
+                &mut world.score,
+                &mut world.combo_state,
+                &mut world.ai_manager,
+                &mut world.food,
+                world.game_time,
+                &mut rng,
+            );
 
-            // --- 陷阱果实生成 ---
-            if !world.buff_state.sandworm_active {
-                world.trap_spawn_timer += dt;
-                if world.trap_spawn_timer >= 3.0 {
-                    world.trap_spawn_timer = 0.0;
-                    if rng.gen_bool(0.4) {
-                        if let Some(fruit) = spawn_fruit(
-                            &world.registry,
-                            FruitCategory::Trap,
-                            &world.snake.body,
-                            &world.fruits,
-                            world.game_time,
-                            &mut rng,
-                        ) {
-                            world.fruits.push(fruit);
-                        }
-                    }
-                }
-            }
-
-            // --- 功能果实解锁和生成 ---
-            if !world.power_fruit_enabled && world.snake.len() >= 10 {
-                world.power_fruit_enabled = true;
-            }
-            if world.power_fruit_enabled {
-                let has_power = world.fruits.iter().any(|f| {
-                    world
-                        .registry
-                        .get_config(f.type_id)
-                        .map(|c| c.category == FruitCategory::Power)
-                        .unwrap_or(false)
-                });
-                if !has_power && rng.gen_bool(0.015) {
-                    if let Some(fruit) = spawn_fruit(
-                        &world.registry,
-                        FruitCategory::Power,
-                        &world.snake.body,
-                        &world.fruits,
-                        world.game_time,
-                        &mut rng,
-                    ) {
-                        world.fruits.push(fruit);
-                    }
-                }
-            }
-
-            // --- 特殊果实生成（幸运方块和蛇蛋）---
-            if !world.buff_state.sandworm_active {
-                // 幸运方块生成
-                let has_lucky = world.fruits.iter().any(|f| f.type_id == "lucky");
-                if !has_lucky && rng.gen_bool(0.003) {
-                    if let Some(fruit) = spawn_fruit(
-                        &world.registry,
-                        FruitCategory::Special,
-                        &world.snake.body,
-                        &world.fruits,
-                        world.game_time,
-                        &mut rng,
-                    ) {
-                        world.fruits.push(fruit);
-                    }
-                }
-                
-                // 蛇蛋独立生成（概率更高）
-                let has_snake_egg = world.fruits.iter().any(|f| f.type_id == "snake_egg");
-                if !has_snake_egg && world.snake.len() >= 5 && rng.gen_bool(0.008) {
-                    // 直接生成蛇蛋，不通过 spawn_fruit 随机选择
-                    if let Some(config) = world.registry.get_config("snake_egg") {
-                        use rtest::game::spawn_position;
-                        if let Some(pos) = spawn_position(
-                            &world.snake.body,
-                            &world.fruits,
-                            &mut rng,
-                        ) {
-                            world.fruits.push(Fruit::new(pos, config.id, world.game_time, config.lifetime));
-                        }
-                    }
-                }
-            }
+            // --- 果实生成（使用 FruitSpawnManager 统一管理） ---
+            // 所有生成规则都在 create_default_spawn_manager() 中声明式配置
+            world.spawn_manager.update(
+                &world.registry,
+                &world.snake.body,
+                &mut world.fruits,
+                world.game_time,
+                world.buff_state.sandworm_active,
+                dt,
+                &mut rng,
+            );
 
             // --- 传送门生成 ---
             world.portal_spawn_timer += dt;
